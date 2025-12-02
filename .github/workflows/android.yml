@@ -29,20 +29,19 @@ jobs:
       - name: 3. Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # 4. BƯỚC MỚI VÀ QUAN TRỌNG: Setup Keystore for Signing (Sửa lỗi Build)
-      # Bắt buộc phải thêm các Secrets: KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, KEYSTORE_PASSWORD
+     # 4. BƯỚC SỬA LỖI 1: Setup Keystore for Signing
+      # Đã thay thế Action không tìm thấy (actions/setup-android-keystore)
       - name: 4. Setup Keystore for Signing
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' 
-        uses: actions/setup-android-keystore@v1
+        uses: r0adkll/setup-android-keystore@v1 # <--- ĐÃ SỬA LỖI TẠI ĐÂY
         with:
           keystore-base64: ${{ secrets.KEYSTORE_BASE64 }}
           alias: ${{ secrets.KEY_ALIAS }}
           key-pass: ${{ secrets.KEY_PASSWORD }}
           keystore-pass: ${{ secrets.KEYSTORE_PASSWORD }}
 
-      - name: 5. Build Release APK/AAB (Sửa lỗi cú pháp lệnh)
-        # Lệnh assembleRelease sẽ tạo ra APK hoặc AAB đã ký số
-        run: ./gradlew assemble${{ env.BUILD_TYPE }} 
+      - name: 5. Build Release APK/AAB
+        run: ./gradlew assemble${{ env.BUILD_TYPE }}
         
       - name: 6. Run Unit Tests
         run: ./gradlew test
@@ -54,14 +53,14 @@ jobs:
           name: ${{ env.MODULE }}-${{ env.BUILD_TYPE }}-apk
           # Đường dẫn chính xác sau khi Build Release:
           path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/app-${{ env.BUILD_TYPE }}.apk 
-
-      # 8. Deploy to Firebase App Distribution (Sửa lỗi logic CD cho Android)
+          
+# 8. BƯỚC SỬA LỖI 2: Deploy to Firebase App Distribution
+      # Đã nâng cấp version Action (wzieg/firebase-app-distribution-action) lên v2
       - name: 8. Deploy to Firebase App Distribution
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        # Sử dụng ACTION CHUYÊN DỤNG cho App Distribution
-        uses: wzieg/firebase-app-distribution-action@v1 
+        uses: wzieg/firebase-app-distribution-action@v2 # <--- ĐÃ SỬA LỖI TẠI ĐÂY
         with:
-          appId: ${{ secrets.FIREBASE_APP_ID }} # ID ứng dụng Firebase
-          token: ${{ secrets.FIREBASE_TOKEN }} # Token CI của Firebase
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          token: ${{ secrets.FIREBASE_TOKEN }}
           file: app/build/outputs/apk/${{ env.BUILD_TYPE }}/app-${{ env.BUILD_TYPE }}.apk
-          groups: testers # Gửi đến nhóm testers của bạn
+          groups: testers
