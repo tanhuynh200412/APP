@@ -1,5 +1,5 @@
 # .github/workflows/android.yml
-name: Android CI/CD - FINAL STABLE VERSION
+name: Android CI/CD - FINAL STABLE VERSION (FIXED OUTPUT & DEPLOY)
 
 on:
   push:
@@ -48,18 +48,33 @@ jobs:
       - name: 5. Run Unit Tests (Skipping Lint Check)
         run: ./gradlew test -x lint
 
+      # 6. Upload Artifacts (ĐÃ SỬA LỖI ĐƯỜNG DẪN OUTPUT)
       - name: 6. Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/app-${{ env.BUILD_TYPE }}.apk 
+          # SỬ DỤNG KÝ TỰ ĐẠI DIỆN (*) ĐỂ TÌM FILE APK ĐÃ KÝ SỐ (Tên file có thể thay đổi)
+          path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/*.apk 
 
-      # 7. Deploy to Firebase App Distribution (ĐÃ SỬA LỖI INPUT FIREBASE)
-      - name: 7. Deploy to Firebase App Distribution
+      # 7. Deploy to Firebase App Distribution (ĐÃ THAY THẾ ACTION ĐỂ TRÁNH LỖI INPUT)
+      - name: 7. Deploy to Firebase App Distribution (via CLI)
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: FirebaseExtended/action-hosting-deploy@v0
+        # Sử dụng Action Node chính thức để chạy lệnh CLI Firebase
+        uses: actions/setup-node@v4
         with:
-          # Đổi tên INPUT VARIABLE thành "firebaseServiceAccount" (chữ thường)
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }} 
+          node-version: '18'
           
-          entryPoint: "npm install -g firebase-tools && firebase appdistribution:distribute app/build/outputs/apk/release/app-release.apk --app ${{ secrets.FIREBASE_APP_ID }} --release-notes \"CI/CD build #${{ github.run_number }}\" --groups testers"
+      - name: 8. Execute Firebase Distribution
+        run: |
+          # Cài đặt Firebase CLI
+          npm install -g firebase-tools
+          
+          # Đăng nhập bằng Service Account Key (Sử dụng Secret FIREBASE_SERVICE_ACCOUNT)
+          echo ${{ secrets.FIREBASE_SERVICE_ACCOUNT }} > service-account-key.json
+          
+          # Thực thi lệnh App Distribution CLI
+          firebase appdistribution:distribute app/build/outputs/apk/release/*.apk \
+            --app ${{ secrets.FIREBASE_APP_ID }} \
+            --groups testers \
+            --release-notes "CI/CD Build #${{ github.run_number }} - Fixed Deploy" \
+            --service-account-json service-account-key.json
