@@ -1,5 +1,5 @@
-# .github/workflows/android.yml
-name: Android CI/CD - FINAL FIX AND DEPLOY
+# .github/workflows/android-docker.yml
+name: Android CI/CD to Docker Hub (FINAL VERSION)
 
 on:
   push:
@@ -10,17 +10,14 @@ on:
 env:
   BUILD_TYPE: release
   KEYSTORE_FILE_NAME: release.keystore
-  ARTIFACT_NAME: android-app-release
+  # Tên Docker Image sẽ được push (Sử dụng Secret DOCKER_USERNAME)
+  DOCKER_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/app-release
+  DOCKER_IMAGE_TAG: ${{ github.sha }} # Gắn tag bằng SHA của commit
 
 jobs:
-  build_and_deploy:
+  build_and_push:
     runs-on: ubuntu-latest
     
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-      
     steps:
       - name: 1. Checkout Code
         uses: actions/checkout@v4
@@ -33,50 +30,50 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # 3. Setup Keystore (Tạo file signing.properties)
+      # 3. Setup Keystore (Tạo file signing.properties từ Secrets)
       - name: 3. Setup Keystore and Gradle Properties
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          # Giải mã Base64 Secret thành file .keystore
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.KEYSTORE_FILE_NAME }}
+          
+          # Tạo file signing.properties để Gradle đọc
           echo "storeFile=${{ env.KEYSTORE_FILE_NAME }}" > signing.properties
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> signing.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> signing.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> signing.properties
+          
+          # Đặt file properties vào thư mục app/
           mv signing.properties app/
 
-      # 4. Build Release APK (Fix Permission & Skip Lint)
-      - name: 4. Build Release APK/AAB (Fix Permission & Skip Lint)
+      # 4. Build Release APK (Fix Permission Denied & Skip Lint)
+      - name: 4. Build Signed Release APK/AAB
+        # Gộp chmod và Build để đảm bảo quyền thực thi
         run: chmod +x gradlew && ./gradlew assemble${{ env.BUILD_TYPE }} -x lint 
         
-      - name: 5. Run Unit Tests (Skipping Lint Check)
+      - name: 5. Run Unit Tests (Skip Lint)
         run: ./gradlew test -x lint
 
-      # 6. Upload Artifacts (ĐÃ SỬA LỖI ĐƯỜNG DẪN OUTPUT)
-      - name: 6. Upload Release Artifacts
+      # 6. Đăng nhập vào Docker Hub
+      - name: 6. Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # 7. Build và Push Docker Image lên Docker Hub
+      - name: 7. Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Dùng thư mục gốc, nơi có Dockerfile
+          push: true
+          # Gắn tag: ten-user-docker/app-release:commit-sha
+          tags: ${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+
+      # 8. Upload Artifacts (Lưu APK/AAB trên GitHub)
+      - name: 8. Upload Release Artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARTIFACT_NAME }}
-          # SỬ DỤNG KÝ TỰ ĐẠI DIỆN (*) ĐỂ TÌM FILE APK ĐÃ KÝ SỐ
-          path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/*.apk 
-
-      - name: 7. Setup Node.js for Firebase CLI
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          
-      # 8. Deploy to Firebase App Distribution (ĐÃ SỬA LỖI CÚ PHÁP CLI VÀ CÁCH XÁC THỰC)
-      - name: 8. Execute Firebase Distribution (Final Fix)
-        # Sử dụng biến môi trường FIREBASE_TOKEN để xác thực
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: |
-          # Cài đặt Firebase CLI
-          npm install -g firebase-tools
-          
-          # Thực thi lệnh App Distribution CLI (Sử dụng --token)
-          # Lệnh này sẽ tự tìm file APK trong đường dẫn sử dụng *.apk
-          firebase appdistribution:distribute app/build/outputs/apk/release/*.apk \
-            --app ${{ secrets.FIREBASE_APP_ID }} \
-            --groups testers \
-            --release-notes "CI/CD Build #${{ github.run_number }} - Final Fix" \
-            --token "${{ secrets.FIREBASE_TOKEN }}"
+          name: android-app-release
+          # Sử dụng ký tự đại diện để tìm file APK đã build
+          path: app/build/outputs/apk/release/*.apk
