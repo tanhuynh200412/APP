@@ -1,5 +1,5 @@
 # .github/workflows/android.yml
-name: Android CI/CD - STABLE (Lint Disabled)
+name: Android CI/CD - STABLE (Final Check)
 
 on:
   push:
@@ -20,8 +20,18 @@ jobs:
       - name: 1. Checkout Code
         uses: actions/checkout@v4
 
-      # ... (Bước Setup Java, Grant execute giữ nguyên)
+      # 2. Setup Java
+      - name: 2. Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
+      # 3. CẤP QUYỀN TRƯỚC KHI GỌI GRADLEW LẦN ĐẦU TIÊN
+      - name: 3. Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
       # 4. Thiết lập Keystore và Signing (Sử dụng lệnh Shell)
       - name: 4. Setup Keystore and Gradle Properties
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -35,12 +45,10 @@ jobs:
 
       # 5. Build Release APK (Bỏ qua Lint để fix lỗi)
       - name: 5. Build Release APK/AAB (Skipping Lint Check)
-        # THÊM "-x lint" VÀO ĐÂY
-        run: ./gradlew assemble${{ env.BUILD_TYPE }} -x lint
+        run: ./gradlew assemble${{ env.BUILD_TYPE }} -x lint 
         
       # 6. Chạy Unit Tests (Bỏ qua Lint để fix lỗi)
       - name: 6. Run Unit Tests (Skipping Lint Check)
-        # THÊM "-x lint" VÀO ĐÂY
         run: ./gradlew test -x lint
 
       # 7. Upload Artifacts (Lưu file APK đã ký số)
