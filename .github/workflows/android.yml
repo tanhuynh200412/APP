@@ -1,19 +1,14 @@
-# .github/workflows/android.yml (Tên file có thể do bạn đặt)
+# .github/workflows/android.yml (Đã sửa lỗi cú pháp, ký số, và logic triển khai)
 name: Android CI/CD
 
 on:
-  # Kích hoạt khi có code được đẩy lên nhánh main
   push:
     branches: [ "main" ]
-  # Kích hoạt khi có Pull Request (PR) hợp nhất vào main (Tốt cho Code Review)
   pull_request:
     branches: [ "main" ]
 
-# Cấu hình các biến môi trường
 env:
-  # Tên module chính (thường là 'app' hoặc 'APP-main' như trong dự án của bạn)
   MODULE: app
-  # Tên file build (thường là release)
   BUILD_TYPE: release
 
 jobs:
@@ -23,7 +18,7 @@ jobs:
       - name: 1. Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Setup Java (Duy trì JDK 17 cho Android)
+      # 2. Setup Java
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -31,42 +26,42 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # 3. Cấp quyền thực thi
-      - name: Grant execute permission for gradlew
+      - name: 3. Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # 4. (Tùy chọn) Khởi tạo Firebase App Distribution (Nếu bạn dùng Firebase CD)
-      # Do trong cấu trúc dự án của bạn có ".firebase", bước này là cần thiết cho CD
-      - name: Firebase Login & Setup
-        uses: actions/setup-node@v4
+      # 4. BƯỚC MỚI VÀ QUAN TRỌNG: Setup Keystore for Signing (Sửa lỗi Build)
+      # Bắt buộc phải thêm các Secrets: KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, KEYSTORE_PASSWORD
+      - name: 4. Setup Keystore for Signing
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' 
+        uses: actions/setup-android-keystore@v1
         with:
-          node-version: '18'
-      - run: npm install -g firebase-tools
+          keystore-base64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          key-pass: ${{ secrets.KEY_PASSWORD }}
+          keystore-pass: ${{ secrets.KEYSTORE_PASSWORD }}
 
-      # 5. Build Release APK/AAB (Bước quan trọng để có file phát hành)
-      # Thay đổi lệnh build để tạo ra file release, không phải debug
-      - name: Build Release APK/AAB
-        run: ./gradlew assemble${{ env.MODULE }}${{ env.BUILD_TYPE }}
+      - name: 5. Build Release APK/AAB (Sửa lỗi cú pháp lệnh)
+        # Lệnh assembleRelease sẽ tạo ra APK hoặc AAB đã ký số
+        run: ./gradlew assemble${{ env.BUILD_TYPE }} 
         
-      # 6. Chạy Unit Tests (Đảm bảo chất lượng code)
-      - name: Run Unit Tests
+      - name: 6. Run Unit Tests
         run: ./gradlew test
 
-      # 7. Upload Artifacts (Lưu file APK/AAB đã build)
-      # Đường dẫn cần được kiểm tra lại dựa trên cấu trúc output của Gradle
-      - name: Upload Release Artifacts
+      # 7. Upload Artifacts (Lưu file APK đã ký số)
+      - name: 7. Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MODULE }}-${{ env.BUILD_TYPE }}-apk
-          path: ${{ env.MODULE }}/build/outputs/apk/${{ env.BUILD_TYPE }}/${{ env.MODULE }}-${{ env.BUILD_TYPE }}.apk
+          # Đường dẫn chính xác sau khi Build Release:
+          path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/app-${{ env.BUILD_TYPE }}.apk 
 
-     # 8. (CD) Triển khai tự động lên Firebase Hosting
-      - name: Deploy to Firebase Hosting
+      # 8. Deploy to Firebase App Distribution (Sửa lỗi logic CD cho Android)
+      - name: 8. Deploy to Firebase App Distribution
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        # THAY THẾ ACTION CŨ BẰNG ACTION NÀY
-        uses: FirebaseExtended/action-hosting-deploy@v0
+        # Sử dụng ACTION CHUYÊN DỤNG cho App Distribution
+        uses: wzieg/firebase-app-distribution-action@v1 
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' # Dùng Service Account Key (JSON)
-          channelId: live
-          projectId: your-firebase-project-id # Thay bằng ID dự án của bạn
+          appId: ${{ secrets.FIREBASE_APP_ID }} # ID ứng dụng Firebase
+          token: ${{ secrets.FIREBASE_TOKEN }} # Token CI của Firebase
+          file: app/build/outputs/apk/${{ env.BUILD_TYPE }}/app-${{ env.BUILD_TYPE }}.apk
+          groups: testers # Gửi đến nhóm testers của bạn
