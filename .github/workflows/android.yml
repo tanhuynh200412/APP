@@ -60,16 +60,13 @@ jobs:
           name: ${{ env.MODULE }}-${{ env.BUILD_TYPE }}-apk
           path: ${{ env.MODULE }}/build/outputs/apk/${{ env.BUILD_TYPE }}/${{ env.MODULE }}-${{ env.BUILD_TYPE }}.apk
 
-      # 8. (CD) Triển khai tự động lên Firebase App Distribution
-      # Bước này sẽ đẩy file APK/AAB lên Firebase cho người thử nghiệm
-      # Cần thêm SECRET KEY (FIREBASE_TOKEN) vào repository settings
-      - name: Deploy to Firebase App Distribution
+     # 8. (CD) Triển khai tự động lên Firebase Hosting
+      - name: Deploy to Firebase Hosting
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: wzieg/firebase-action@v1
+        # THAY THẾ ACTION CŨ BẰNG ACTION NÀY
+        uses: FirebaseExtended/action-hosting-deploy@v0
         with:
-          args: deploy --only hosting
-          firebase_token: ${{ secrets.FIREBASE_TOKEN }}
-          # Thêm các tham số cho App Distribution nếu bạn muốn triển khai file APK/AAB đã build
-          # Thường sẽ sử dụng một action chuyên biệt khác cho App Distribution, ví dụ:
-          # uses: wzieg/firebase-app-distribution-action@v1
-          # ...
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' # Dùng Service Account Key (JSON)
+          channelId: live
+          projectId: your-firebase-project-id # Thay bằng ID dự án của bạn
